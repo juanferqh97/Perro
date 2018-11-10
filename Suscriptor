@@ -1,0 +1,91 @@
+#include <ESP8266WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+
+// Red inalámbrica CAMBIAR
+#define WLAN_SSID       "Iphone de Juan Fernando Q"
+#define WLAN_PASS       "soco1966"
+
+// Dashboard CAMBIAR
+#define AIO_SERVER      "io.adafruit.com"
+#define AIO_SERVERPORT  1883                   // use 8883 for SSL
+#define AIO_USERNAME    "juanferq97"
+#define AIO_KEY         "52ff041f98eb4506851a573350811b3f"
+
+// Clase cliente CAMBIAR
+WiFiClient client;
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+Adafruit_MQTT_Subscribe Perro = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/Perro");
+//int D1 ;
+
+// Conectarse NO CAMBIAR
+void MQTT_connect();
+String data;
+void setup() {
+  Serial.begin(115200);
+  analogWriteFreq(500);
+  delay(10);
+  Serial.println(); Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(WLAN_SSID);
+  WiFi.begin(WLAN_SSID, WLAN_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.println("WiFi connected");
+  Serial.println("IP address: "); Serial.println(WiFi.localIP());
+
+  mqtt.subscribe(&Perro);
+  pinMode(D1, OUTPUT);
+  pinMode(D2, OUTPUT);
+  digitalWrite(D1,0);
+  digitalWrite(D2,0);
+  
+}
+
+char Estado;
+void loop() {
+  MQTT_connect();
+  Adafruit_MQTT_Subscribe *subscription;
+  subscription = mqtt.readSubscription();
+
+  if (subscription == &Perro) {
+    Serial.print(F("Got: "));
+    Serial.println((char *)Perro.lastread);
+    Estado = Perro.lastread[0];
+    Serial.println(Estado);
+    if (Estado == '1') {
+      digitalWrite(D1, HIGH);
+      digitalWrite(D2, LOW);
+    }
+    if (Estado == '0') {
+      digitalWrite(D2, HIGH);
+      digitalWrite(D1, LOW);
+    }
+  }
+}
+
+// Conectarse NO CAMBIAR
+void MQTT_connect() {
+  int8_t ret;
+  // Stop if already connected.
+  if (mqtt.connected()) {
+    return;
+  }
+  Serial.print("Connecting to MQTT... ");
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("Retrying MQTT connection in 5 seconds...");
+    mqtt.disconnect();
+    delay(5000);  // wait 5 seconds
+    retries--;
+    if (retries == 0) {
+      // basically die and wait for WDT to reset me
+      while (1);
+    }
+  }
+  Serial.println("MQTT Connected!");
+}
