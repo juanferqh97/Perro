@@ -1,0 +1,136 @@
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+
+#include <WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+
+#define WLAN_SSID       "Iphone de Juan Fernando Q"
+#define WLAN_PASS       "soco1966"
+
+
+#define AIO_SERVER      "io.adafruit.com"
+#define AIO_SERVERPORT  1883                   // use 8883 for SSL
+#define AIO_USERNAME    "juanferq97"
+#define AIO_KEY         "52ff041f98eb4506851a573350811b3f"
+
+WiFiClient client;
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+Adafruit_MQTT_Publish Perro = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/Perro");
+
+int scanTime = 2; //In seconds
+
+uint8_t perroAlert = 0;
+uint8_t perroadda = 0;
+uint8_t scanPerro = 0;
+uint8_t state = 0;
+
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+    void onResult(BLEAdvertisedDevice advertisedDevice) {
+      std::string dataRX = advertisedDevice.toString();
+
+      //Serial.printf("Advertised Device: %s \n", dataRX.c_str());
+      //Serial.println("----------------------------------------------------");
+      int32_t  n = dataRX.find("Perro");
+      if (n != -1) scanPerro = 1;
+
+      //Serial.println(n);
+      //Serial.println();
+      //Serial.println("***********************************************");
+    }
+};
+void MQTT_connect();
+void setup() {
+  Serial.begin(115200);
+  perroAlert = 0;
+
+  // Connect to WiFi access point.
+  Serial.println(); Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(WLAN_SSID);
+
+  WiFi.begin(WLAN_SSID, WLAN_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  Serial.println("WiFi connected");
+  Serial.println("IP address: "); Serial.println(WiFi.localIP());
+
+
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  MQTT_connect();
+  scanPerro = 0;
+
+  beaconScan();
+  delay(2000);
+}
+
+void beaconScan() {
+  Serial.println("Scanning...");
+  BLEDevice::init("");
+  BLEScan* pBLEScan = BLEDevice::getScan(); //create new scan
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
+  BLEScanResults foundDevices = pBLEScan->start(scanTime);
+  switch (state) {
+    case 0:
+      if (scanPerro == 1) {
+        Serial.println(" Perro is Here! ");
+        perroAlert = 0;
+        perroadda=1;
+        if (! Perro.publish(scanPerro)) {}
+
+      }
+      else {
+        Serial.println(" Where is Perro :( ");
+        perroAlert++;
+      }
+      if (perroAlert > 3) {
+        state = 1;
+      }
+      break;
+      Serial.println("Scan done!");
+
+
+    case 1:
+    if (! Perro.publish(scanPerro)) {}
+      Serial.println("Perro Esta Perdido!");
+      if (scanPerro == 1) {
+        state = 0;
+        break;
+      }
+  }
+
+}
+void MQTT_connect() {
+  int8_t ret;
+
+  // Stop if already connected.
+  if (mqtt.connected()) {
+    return;
+  }
+
+  Serial.print("Connecting to MQTT... ");
+
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("Retrying MQTT connection in 5 seconds...");
+    mqtt.disconnect();
+    delay(5000);  // wait 5 seconds
+    retries--;
+    if (retries == 0) {
+      // basically die and wait for WDT to reset me
+      while (1);
+    }
+  }
+  Serial.println("MQTT Connected!");
+}
